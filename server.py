@@ -1,34 +1,35 @@
-import os
-import json
-import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from sentence_transformers import SentenceTransformer
 import numpy as np
+import json
+import os
 
 app = FastAPI()
 
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/embeddings/sentence-transformers/all-MiniLM-L6-v2"
+# Activar CORS para que el frontend pueda comunicarse
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción, podés reemplazar * por tu dominio
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-headers = {
-    "Authorization": f"Bearer {HF_API_TOKEN}",
-    "Content-Type": "application/json"
-}
+modelo = SentenceTransformer("all-MiniLM-L6-v2")
 
-def get_embedding(text):
-    response = requests.post(HF_API_URL, headers=headers, json={"inputs": text})
-    if response.status_code != 200:
-        raise Exception(f"Error from HF API: {response.status_code} - {response.text}")
-    return response.json()["embedding"]
-
+# Función para calcular similitud por producto punto (coseno)
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
     v2 = np.array(v2)
-    return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
+# Cargar los embeddings desde archivo JSON
 def cargar_embeddings(archivo):
     with open(archivo, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    return data
 
 @app.post("/ask")
 async def responder_pregunta(req: Request):
@@ -36,27 +37,27 @@ async def responder_pregunta(req: Request):
     pregunta = body.get("question")
     tema = body.get("topic")
 
-    if not pregunta or not tema:
-        return JSONResponse({"error": "Missing data"}, status_code=400)
+    if tema == "all":
+        archivos = [f for f in os.listdir("output_embeddings") if f.endswith(".json")]
+    else:
+        archivos = [f"{tema}.json"]
 
-    archivos = [f for f in os.listdir() if f.endswith(".json")] if tema.lower() == "all" else [f"{tema}.json"]
+    mejor_respuesta = ""
+    mayor_similitud = -1
 
-    mejor_score = -1
-    mejor_texto = ""
-    pregunta_vec = get_embedding(pregunta)
+    pregunta_embedding = modelo.encode(pregunta)
 
     for archivo in archivos:
-        try:
-            datos = cargar_embeddings(archivo)
-            for item in datos:
-                score = cosine_similarity(pregunta_vec, item["embedding"])
-                if score > mejor_score:
-                    mejor_score = score
-                    mejor_texto = item["text"]
-        except:
-            continue
+        path = os.path.join("output_embeddings", archivo)
+        embeddings = cargar_embeddings(path)
 
-    return {
-        "respuesta": mejor_texto,
-        "similitud": round(mejor_score, 4)
-    }
+        for item in embeddings:
+            sim = cosine_similarity(pregunta_embedding, item["embedding"])
+            if sim > mayor_similitud:
+                mayor_similitud = sim
+                mejor_respuesta = item["text"]
+
+    return JSONResponse(content={
+        "respuesta": mejor_respuesta,
+        "similitud": round(mayor_similitud, 4)
+    })
