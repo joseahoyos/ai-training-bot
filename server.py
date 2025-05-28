@@ -66,15 +66,16 @@ async def responder_pregunta(req: Request):
         if tema == "all":
             archivos_filtrados = [f for f in archivos_disponibles if f.endswith(".json")]
         else:
-            for archivo in archivos_disponibles:
-                if tema.lower() in archivo.lower():
-                    archivos_filtrados.append(archivo)
+            archivos_filtrados = [
+                f for f in archivos_disponibles
+                if tema.lower() in f.lower()
+            ]
 
         if not archivos_filtrados:
             return JSONResponse(content={
                 "respuesta": "",
                 "similitud": 0,
-                "mensaje": "⚠️ No se encontró ningún archivo para ese tema."
+                "mensaje": f"⚠️ No files found matching topic '{tema}'"
             })
 
         pregunta_embedding = get_embedding(pregunta)
@@ -95,7 +96,7 @@ async def responder_pregunta(req: Request):
             return JSONResponse(content={
                 "respuesta": "",
                 "similitud": 0,
-                "mensaje": "⚠️ No valid response found. Try another topic or question."
+                "mensaje": "⚠️ No valid answer found after comparing embeddings."
             })
 
         return JSONResponse(content={
