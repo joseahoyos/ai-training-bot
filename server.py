@@ -58,17 +58,31 @@ async def responder_pregunta(req: Request):
         if not pregunta or not tema:
             return JSONResponse(status_code=400, content={"error": "Missing 'question' or 'topic'"})
 
-        archivos = (
-            [f"{tema}.json"] if tema != "all"
-            else [f for f in os.listdir("output_embeddings") if f.endswith(".json")]
-        )
+        carpeta = "output_embeddings"
+
+        archivos_disponibles = os.listdir(carpeta)
+        archivos_filtrados = []
+
+        if tema == "all":
+            archivos_filtrados = [f for f in archivos_disponibles if f.endswith(".json")]
+        else:
+            for archivo in archivos_disponibles:
+                if tema.lower() in archivo.lower():
+                    archivos_filtrados.append(archivo)
+
+        if not archivos_filtrados:
+            return JSONResponse(content={
+                "respuesta": "",
+                "similitud": 0,
+                "mensaje": "⚠️ No se encontró ningún archivo para ese tema."
+            })
 
         pregunta_embedding = get_embedding(pregunta)
         mejor_respuesta = ""
         mayor_similitud = -1
 
-        for archivo in archivos:
-            path = os.path.join("output_embeddings", archivo)
+        for archivo in archivos_filtrados:
+            path = os.path.join(carpeta, archivo)
             data = cargar_embeddings(path)
 
             for item in data:
@@ -76,6 +90,13 @@ async def responder_pregunta(req: Request):
                 if sim > mayor_similitud:
                     mayor_similitud = sim
                     mejor_respuesta = item["text"]
+
+        if not mejor_respuesta:
+            return JSONResponse(content={
+                "respuesta": "",
+                "similitud": 0,
+                "mensaje": "⚠️ No valid response found. Try another topic or question."
+            })
 
         return JSONResponse(content={
             "respuesta": mejor_respuesta,
