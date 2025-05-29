@@ -24,7 +24,7 @@ def get_embedding(texto):
         raise ValueError("🚨 HuggingFace API token (HF_TOKEN) is missing!")
 
     response = requests.post(
-        "https://api-inference.huggingface.co/embeddings/sentence-transformers/all-MiniLM-L6-v2",
+        "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2",
         headers={"Authorization": f"Bearer {HF_TOKEN}"},
         json={"inputs": texto},
         timeout=30
@@ -34,10 +34,10 @@ def get_embedding(texto):
         raise RuntimeError(f"🛑 HuggingFace API error {response.status_code}: {response.text}")
 
     data = response.json()
-    if "embedding" not in data:
-        raise RuntimeError("❌ 'embedding' not found in HuggingFace response")
+    if not isinstance(data, list) or len(data) == 0:
+        raise RuntimeError("❌ Invalid embedding format from HuggingFace")
 
-    return data["embedding"]
+    return data[0]
 
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
